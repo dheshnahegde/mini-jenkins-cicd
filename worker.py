@@ -63,3 +63,5 @@ while True:
     except Exception as e:
         print(f"⚠️ Worker Loop Error: {e}", flush=True)
         time.sleep(2) # Prevent rapid-fire crashing
+
+    #new changes made
