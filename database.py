@@ -15,7 +15,7 @@ class JobRecord(Base):
     code_hash = Column(String)            # Unique fingerprint
 
     # Add this at the very bottom of database.py
-DATABASE_URL = "postgresql://user:password@localhost:5432/jenkins_db"
+DATABASE_URL = "postgresql://user:password@db:5432/jenkins_db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

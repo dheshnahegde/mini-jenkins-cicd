@@ -9,3 +9,17 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: jenkins_db
     ports: ["5432:5432"]
+  master:
+    build: .
+    command: python master.py
+    ports:
+      ["8000:8000"]
+    depends_on:
+      - redis
+      - db
+  worker:
+    build: .
+    command: python worker.py
+    depends_on:
+      - redis
+      - db

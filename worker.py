@@ -3,58 +3,63 @@ import json
 import time
 import random
 import sys
+import os
 from database import SessionLocal, JobRecord
 
-# 1. Connect to Redis
+# Force logs to show up immediately in Docker terminal
+print("🔄 Initializing Worker...", flush=True)
+
+# 1. Connect to Redis (Using 'redis' host for Docker networking)
 try:
-    r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-    print("✅ Connected to Redis")
+    r = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+    # Ping to check if connection is actually live
+    r.ping()
+    print("✅ Connected to Redis", flush=True)
 except Exception as e:
-    print(f"❌ Redis Connection Error: {e}")
+    print(f"❌ Redis Connection Error: {e}", flush=True)
     sys.exit(1)
 
-# 2. Get Worker Type from Command Line (e.g., python worker.py python)
-worker_type = sys.argv[1] if len(sys.argv) > 1 else "python"
-print(f"🚀 Worker started. Specialization: {worker_type.upper()}")
-print("Waiting for jobs...")
+print("🚀 Worker started. Listening for ANY job in 'jenkins_queue'...", flush=True)
 
 while True:
-    # 3. 'brpop' waits (blocks) until a job is available in the list
-    # Result is a tuple: (list_name, message)
-    result = r.brpop("jenkins_queue")
-    if not result:
-        continue
+    try:
+        # 2. 'brpop' waits (blocks) until a job is available
+        # It returns a tuple: (list_name, message)
+        result = r.brpop("jenkins_queue", timeout=5)
+        
+        if not result:
+            continue
 
-    _, message = result
-    job = json.loads(message)
-    
-    # 4. Criteria-based assignment (Check if this worker should handle this job)
-    if job['language'] == worker_type:
-        job_id = job['id']
-        repo_name = job['repo']
+        _, message = result
+        job = json.loads(message)
+        
+        job_id = job.get('id')
+        repo_name = job.get('repo')
+        language = job.get('language', 'unknown')
 
-        print(f"🛠️  [STARTING] Job {job_id} for {repo_name}")
+        print(f"🛠️  [STARTING] Job {job_id} | Repo: {repo_name} | Type: {language}", flush=True)
 
-        # 5. Update Database: Status -> RUNNING
+        # 3. Update Database: Status -> RUNNING
         db = SessionLocal()
-        db.query(JobRecord).filter(JobRecord.id == job_id).update({"status": "RUNNING"})
-        db.commit()
+        try:
+            db.query(JobRecord).filter(JobRecord.id == job_id).update({"status": "RUNNING"})
+            db.commit()
 
-        # 6. Simulate the Build Process
-        # Adding randomness in execution time as per requirements
-        build_duration = random.randint(5, 12)
-        time.sleep(build_duration) 
+            # 4. Simulate the Build Process (5 to 12 seconds)
+            build_duration = random.randint(5, 12)
+            time.sleep(build_duration) 
 
-        # 7. Update Database: Status -> COMPLETED
-        db.query(JobRecord).filter(JobRecord.id == job_id).update({"status": "COMPLETED"})
-        db.commit()
-        db.close()
+            # 5. Update Database: Status -> COMPLETED
+            db.query(JobRecord).filter(JobRecord.id == job_id).update({"status": "COMPLETED"})
+            db.commit()
+            print(f"✅ [FINISHED] Job {job_id} in {build_duration}s", flush=True)
+            
+        except Exception as db_e:
+            print(f"❌ Database Error during job {job_id}: {db_e}", flush=True)
+            db.rollback()
+        finally:
+            db.close()
 
-        print(f"✅ [FINISHED] Job {job_id} in {build_duration}s")
-    
-    else:
-        # 8. Not my language? Put it back in the queue for another worker!
-        print(f"⏭️  [SKIPPING] {job['language']} job. Returning to queue...")
-        r.lpush("jenkins_queue", message)
-        # Small sleep to prevent this worker from immediately re-grabbing the same job
-        time.sleep(1)
+    except Exception as e:
+        print(f"⚠️ Worker Loop Error: {e}", flush=True)
+        time.sleep(2) # Prevent rapid-fire crashing
