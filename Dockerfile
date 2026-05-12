@@ -6,8 +6,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all your code
+# Copy all your code (Make sure there is only ONE dot here)
 COPY . .
 
-# THIS IS THE IMPORTANT PART:
-# No CMD here, because docker-compose overrides it
+# (Optional) No CMD here as docker-compose overrides it
